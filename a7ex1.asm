@@ -1,36 +1,99 @@
-# =============================================================
-# PROCEDURE WRITING WORKSHEET
-#
-# How many arguments does this procedure expect?
-#
-# Where are they going to be?  The first four should be in
-#   register $a0-$a3, rest on the stack
-#       8($fp) --> arg[5]'s value
-#       4($fp) --> arg[4]'s value
-#       etc.
-#
-# Write the code for the body of this procedure first,
-#   without worrying much about saving/restoring values
-#   on/from the stack
-#
-# Which registers out of $s0-$s7 does this procedure modify?
-#
-# Which registers out of $t0-$t9, $a0-$a3, and $v0-$v1 must
-#   be protected from a call to a callee?
-#
-# Which local variables are needed to be created?
-#
-# What is the max number of arguments this procedure will need
-#   for calling *any* callee?
-#
-# Now, complete your code using the template below
-#
-# =============================================================
+.data 0x0
 
+input: .space 20
+newLine:  .asciiz "\n"
+     
+
+.text 0x3000
 .globl main
 
-main:	syscall 8 
+main:
+
+ori     $sp, $0, 0x2ffc     # Initialize stack pointer to the top word below .text
+                            # The first value on stack will actually go at 0x2ff8
+                            #   because $sp is decremented first.
+addi    $fp, $sp, -4        # Set $fp to the start of main's stack frame
+
+
+
+# =============================================================
+# Create room for temporaries to be protected
+addi    $sp, $sp, -8        # Make room on stack for saving any of the following registers
+                            #   whose values are precious, and must survive a
+                            #   procedure call from main to another procedure (e.g., proc1).
+                            # These registers are $t0-$t9, $a0-$a3, and $v0-$v1.
+                            # We do not save their values yet; values are saved right
+                            #   before calling the other procedure, and restore upon return.
+
+                            # For example, say we need to protect $t0 and $t1
+                            #   during a call to proc1.  So, we allocate 2 words on stack.
+                            # From now on:
+                            #    0($fp) --> $t0's saved value
+                            #   -4($fp) --> $11's saved value
+# =============================================================
+
+
+
+# =============================================================
+# Create local variables on stack
+                            # Put local variables on the stack.
+addi    $sp, $sp, -16       # e.g., int i, j, k, l
+sw  $0, 12($sp)             # Set i=0, or skip initialization
+sw  $0, 8($sp)              # j=0
+sw  $0, 4($sp)              # k=0
+sw  $0, 0($sp)              # l=0
+
+                            # From now on:
+                            #    -8($fp) --> i's value
+                            #   -12($fp) --> j's value
+                            #   -16($fp) --> k's value
+                            #   -20($fp) --> l's value
+# =============================================================
+
+
+
+# =============================================================
+# Make room for spillover arguments (beyond the first four),
+# which are needed to call, say, proc1
+                            # Make room for arg[4] and arg[5]
+addi    $sp, $sp, -8        # e.g., main will call proc1 with 6 arguments
+sw  $0, 4($sp)              # arg[5]=0, or skip initialization
+sw  $0, 0($sp)              # arg[4]=0
+
+                            # From now on:
+                            #   -24($fp) --> arg[5]'s value
+                            #   -28($fp) --> arg[4]'s value
+                            # Alternatively:
+                            #   4($sp) --> arg[5]'s value
+                            #   0($sp) --> arg[4]'s value
+                            #
+                            # But, after proc1 adjusts $fp, it will access these as:
+                            #   8($fp) --> arg[5]'s value
+                            #   4($fp) --> arg[4]'s value
+                            # etc.
+# =============================================================
+
+
+# BODY OF main
+loop:
+		addiu $v0, $0, 8
+		addiu $a1, $0, 21
+		la    $a0, input
+		syscall
+		jal	proc1
+		add   $a0, $v0, $0
+		addiu $v0, $0, 1
+		syscall
+		beq   $a0, $0, exit_from_main
+		la     $a0, newLine
+    		 addi   $v0, $0, 4
+    		 syscall
+		j loop
 	
+exit_from_main:
+ori     $v0, $0, 10     # System call code 10 for exit
+syscall                 # Exit the program
+end_of_main:
 
 
 .globl proc1
@@ -129,57 +192,24 @@ sw  $0, 0($sp)              # arg[4]=0
 # ...
 # ...
 
-a_to_i:   beqz $a0, return_from_proc1
-	subu $a0, $a0, 48 
-	mult $s0, 10
-	add $s0, $s0, lo
-	add $s0, $a0, $s0
-	add $v0, $s0, $0
+a_to_i:   
 
 
-
-
-        # =====================================================
-        # proc1 CALLS proc2
-        #
-        # Suppose proc1 needs to call proc2, and protect 
-        #   $t0 and $t1 during this call.  Suppose there are six
-        #   arguments to send to proc2(0,10,20,30,40,50).
-        # Here's how to do it.
-        # The same technique applies to protecting any of
-        #   $t0-$t9, $a0-$a3, and $v0-$v1.
-
-        sw  $t0, -24($fp)           # Save $t0
-        sw  $t1, -28($fp)           # Save $t1
-        
-        ori $a0, $0, 50             # Put 50 in ...
-        sw  $a0, 4($sp)             # ... arg[5]
-        ori $a0, $0, 40             # Put 40 in ...
-        sw  $a0, 0($sp)             # ... arg[4]
-
-        ori $a0, $0,  0             # Put  0 in $a0
-        ori $a1, $0, 10             # Put 10 in $a1
-        ori $a2, $0, 20             # Put 20 in $a2
-        ori $a3, $0, 30             # Put 30 in $a3
-
-        jal proc2
-
-        lw  $t0, -24($fp)           # Restore $t0
-        lw  $t1, -28($fp)           # Restore $t1
-        
-        
-        
-        
-        
-
-        # =====================================================
-
-# ...
-# ...
-# put return values, if any, in $v0-$v1
-# END OF BODY OF proc1
-# =============================================================
-
+	  addiu $a0, $a0, 0
+	  lb $s0, input($t2)
+	 
+	  beq $s0, 10, return_from_proc1
+	  addiu $t2, $t2, 1
+	  addiu $s4, $s4, 0
+	  addi  $s4, $s4, 48 
+	  sub   $s0, $s0, $s4
+	  add  $s1, $0, 10
+	  multu $s3, $s1
+	  mflo $s2
+	  add $a0, $0, $s2
+	  add $a0, $a0, $s0
+	  add $v0, $a0, $0
+	  j a_to_i
 
 
 # =============================================================
