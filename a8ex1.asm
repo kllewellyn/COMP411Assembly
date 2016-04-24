@@ -3,6 +3,7 @@
 # global variables here
 newLine:  .asciiz "\n"
 
+
 .text 0x3000
 .globl main
 
